@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Google Drive 集成</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    button {
+      background-color: #4285F4;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #3367D6;
+    }
+    #status {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Google Drive 授权示例</h1>
+  <p>点击下面的按钮授权访问您的 Google Drive：</p>
+  
+  <button id="authorize-button">连接 Google Drive</button>
+  <div id="status"></div>
+
+  <script>
+    // 您需要从Google Cloud Console获取的客户端ID
+    const CLIENT_ID = '您的客户端ID';
+    const API_KEY = '您的API密钥';
+    
+    // 请求的权限范围
+    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    
+    let tokenClient;
+    let gapiInited = false;
+    let gisInited = false;
+    
+    document.getElementById('authorize-button').addEventListener('click', handleAuthClick);
+    
+    // 加载Google API客户端库
+    function gapiLoaded() {
+      gapi.load('client', initializeGapiClient);
+    }
+    
+    async function initializeGapiClient() {
+      await gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+      });
+      gapiInited = true;
+    }
+    
+    function gisLoaded() {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: '', // 将在运行时定义
+      });
+      gisInited = true;
+    }
+    
+    function handleAuthClick() {
+      // 确保库已加载
+      if (!gapiInited || !gisInited) {
+        document.getElementById('status').textContent = '正在初始化，请稍候...';
+        return;
+      }
+      
+      tokenClient.callback = async (resp) => {
+        if (resp.error !== undefined) {
+          document.getElementById('status').textContent = '授权失败: ' + resp.error;
+          return;
+        }
+        
+        document.getElementById('status').textContent = '已成功连接到Google Drive！';
+        // 这里您可以添加后续的操作，如列出文件、上传文件等
+        listFiles();
+      };
+      
+      tokenClient.requestAccessToken({prompt: 'consent'});
+    }
+    
+    // 示例：列出Google Drive文件
+    async function listFiles() {
+      try {
+        const response = await gapi.client.drive.files.list({
+          'pageSize': 10,
+          'fields': 'files(id, name)'
+        });
+        
+        const files = response.result.files;
+        if (files && files.length > 0) {
+          let fileList = '找到的文件：<ul>';
+          for (let i = 0; i < files.length; i++) {
+            fileList += `<li>${files[i].name}</li>`;
+          }
+          fileList += '</ul>';
+          document.getElementById('status').innerHTML += fileList;
+        } else {
+          document.getElementById('status').innerHTML += '<p>未找到文件。</p>';
+        }
+      } catch (err) {
+        document.getElementById('status').innerHTML += '<p>发生错误: ' + err.message + '</p>';
+      }
+    }
+  </script>
+
+  <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+  <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+</body>
+</html>
