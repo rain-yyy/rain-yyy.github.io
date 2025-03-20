@@ -230,6 +230,8 @@
         let currentPath = '';
         // 路径历史
         let pathHistory = [];
+        // 当前会话的token
+        let currentToken = null;
         
         // 生成随机state参数用于防止CSRF攻击
         function generateRandomState() {
@@ -269,6 +271,9 @@
             const state = params.get('state');
             
             if (accessToken && validateState(state)) {
+                // 存储当前会话的token
+                currentToken = accessToken;
+                
                 // 清除state
                 sessionStorage.removeItem('dropbox_auth_state');
                 
@@ -276,7 +281,7 @@
                 document.getElementById('loading').style.display = 'block';
                 
                 // 获取文件列表
-                fetchFiles(accessToken, '');
+                fetchFiles(currentToken, '');
                 
                 // 更新UI
                 document.getElementById('authButton').textContent = '已连接到Dropbox';
@@ -396,7 +401,7 @@
                             // 保存当前路径到历史记录以便返回
                             pathHistory.push(path);
                             // 获取该文件夹内容
-                            fetchFiles(localStorage.getItem('dropbox_access_token'), folderPath);
+                            fetchFiles(currentToken, folderPath);
                         });
                     }
                     
@@ -504,7 +509,7 @@
             homeLink.addEventListener('click', (e) => {
                 e.preventDefault();
                 pathHistory = [];
-                fetchFiles(localStorage.getItem('dropbox_access_token'), '');
+                fetchFiles(currentToken, '');
             });
             homeItem.appendChild(homeLink);
             breadcrumbElement.appendChild(homeItem);
@@ -537,7 +542,7 @@
                         pathLink.addEventListener('click', (e) => {
                             e.preventDefault();
                             pathHistory = pathHistory.slice(0, pathHistory.indexOf(tempPath) + 1);
-                            fetchFiles(localStorage.getItem('dropbox_access_token'), tempPath);
+                            fetchFiles(currentToken, tempPath);
                         });
                     } else {
                         pathLink.style.color = '#333';
@@ -554,7 +559,7 @@
         function goBack() {
             if (pathHistory.length > 0) {
                 const previousPath = pathHistory.pop();
-                fetchFiles(localStorage.getItem('dropbox_access_token'), previousPath);
+                fetchFiles(currentToken, previousPath);
             }
         }
         
