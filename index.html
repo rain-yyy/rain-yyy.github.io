@@ -26,6 +26,26 @@
     #status {
       margin-top: 20px;
     }
+    .error-message {
+      color: #d32f2f;
+      background-color: #ffebee;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .success-message {
+      color: #388e3c;
+      background-color: #e8f5e9;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .file-list {
+      margin-top: 15px;
+    }
+    .file-list li {
+      margin-bottom: 5px;
+    }
   </style>
 </head>
 <body>
@@ -65,6 +85,7 @@
         console.log("GAPI initialized successfully");
       } catch (error) {
         console.error("Error initializing GAPI:", error);
+        showError("初始化 Google API 时出错: " + (error.message || "未知错误"));
       }
     }
     
@@ -80,6 +101,7 @@
         console.log("GIS initialized successfully");
       } catch (error) {
         console.error("Error initializing token client:", error);
+        showError("初始化授权客户端时出错: " + (error.message || "未知错误"));
       }
     }
     
@@ -92,12 +114,12 @@
       
       tokenClient.callback = async (resp) => {
         if (resp.error !== undefined) {
-          document.getElementById('status').textContent = '授权失败: ' + resp.error;
+          showError('授权失败: ' + resp.error);
           console.error("Authorization error:", resp.error);
           return;
         }
         
-        document.getElementById('status').textContent = '已成功连接到Google Drive！';
+        showSuccess('已成功连接到Google Drive！');
         console.log("Successfully connected to Google Drive");
         // 这里您可以添加后续的操作，如列出文件、上传文件等
         listFiles();
@@ -108,8 +130,26 @@
         tokenClient.requestAccessToken({prompt: 'consent'});
       } catch (error) {
         console.error("Error requesting access token:", error);
-        document.getElementById('status').textContent = '请求授权时出错: ' + error.message;
+        showError('请求授权时出错: ' + (error.message || "未知错误"));
       }
+    }
+    
+    // 显示错误信息的辅助函数
+    function showError(message) {
+      const statusDiv = document.getElementById('status');
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'error-message';
+      errorDiv.innerHTML = message;
+      statusDiv.appendChild(errorDiv);
+    }
+    
+    // 显示成功信息的辅助函数
+    function showSuccess(message) {
+      const statusDiv = document.getElementById('status');
+      const successDiv = document.createElement('div');
+      successDiv.className = 'success-message';
+      successDiv.textContent = message;
+      statusDiv.appendChild(successDiv);
     }
     
     // 示例：列出Google Drive文件
@@ -126,20 +166,55 @@
         
         const files = response.result.files;
         if (files && files.length > 0) {
-          let fileList = '找到的文件 (' + files.length + ')：<ul>';
+          const fileListDiv = document.createElement('div');
+          fileListDiv.className = 'file-list';
+          fileListDiv.innerHTML = '<h3>找到的文件 (' + files.length + ')：</h3><ul>';
+          
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const dateStr = new Date(file.modifiedTime).toLocaleString();
-            fileList += `<li>${file.name} (${file.mimeType}) - 最后修改: ${dateStr}</li>`;
+            fileListDiv.innerHTML += `<li>${file.name} (${file.mimeType}) - 最后修改: ${dateStr}</li>`;
           }
-          fileList += '</ul>';
-          document.getElementById('status').innerHTML += fileList;
+          
+          fileListDiv.innerHTML += '</ul>';
+          document.getElementById('status').appendChild(fileListDiv);
         } else {
           document.getElementById('status').innerHTML += '<p>未找到文件。</p>';
         }
       } catch (err) {
         console.error("Error listing files:", err);
-        document.getElementById('status').innerHTML += '<p>发生错误: ' + err.message + '</p>';
+        
+        let errorMessage = '获取文件列表时出错';
+        
+        // 尝试从API响应中提取更详细的错误信息
+        if (err.result && err.result.error) {
+          errorMessage += ': ' + err.result.error.message;
+        } else if (err.body) {
+          try {
+            const errorBody = JSON.parse(err.body);
+            if (errorBody.error && errorBody.error.message) {
+              errorMessage += ': ' + errorBody.error.message;
+              
+              // 添加解决方案提示
+              if (errorBody.error.message.includes('are blocked')) {
+                errorMessage += '<br><br><strong>解决方案:</strong> 您需要在 Google Cloud Console 中配置 API 密钥的 HTTP 引用来源限制。<br>' +
+                '1. 登录到 Google Cloud Console<br>' +
+                '2. 导航到 "API和服务" > "凭据"<br>' +
+                '3. 找到并编辑您的 API 密钥<br>' +
+                '4. 在"应用程序限制"部分，选择"HTTP引用来源"<br>' +
+                '5. 添加 <code>https://rain-yyy.github.io</code> 到允许的引用来源列表<br>' +
+                '6. 保存更改';
+              }
+            }
+          } catch (e) {
+            // JSON解析失败，使用原始错误信息
+            errorMessage += ': ' + err.message;
+          }
+        } else {
+          errorMessage += ': ' + err.message;
+        }
+        
+        showError(errorMessage);
       }
     }
   </script>
