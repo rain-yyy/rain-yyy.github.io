@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dropbox文档访问</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            max-width: 90%;
+            width: 500px;
+        }
+        .btn {
+            background-color: #0061fe;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #004fc4;
+        }
+        #fileList {
+            margin-top: 20px;
+            text-align: left;
+            max-height: 300px;
+            overflow-y: auto;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+        .file-item {
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border-left-color: #0061fe;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dropbox文档访问</h1>
+        <p>点击下方按钮授权访问您的Dropbox文档</p>
+        <button id="authButton" class="btn">连接Dropbox</button>
+        
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>正在加载文件...</p>
+        </div>
+        
+        <div id="fileList"></div>
+    </div>
+
+    <script>
+        // 替换为您的Dropbox应用key
+        const CLIENT_ID = 'te0ejfjypd02cxr';
+        // 替换为您的重定向URI (必须与Dropbox开发者控制台中设置的一致)
+        const REDIRECT_URI = 'https://rain-yyy.github.io/dropbox.html';
+        
+        // 生成随机state参数用于防止CSRF攻击
+        function generateRandomState() {
+            return Math.random().toString(36).substring(2, 15);
+        }
+        
+        // 存储state参数
+        function saveState(state) {
+            localStorage.setItem('dropbox_auth_state', state);
+        }
+        
+        // 验证state参数
+        function validateState(state) {
+            const savedState = localStorage.getItem('dropbox_auth_state');
+            return state === savedState;
+        }
+        
+        // 启动OAuth授权流程
+        function startOAuth() {
+            const state = generateRandomState();
+            saveState(state);
+            
+            // 构建授权URL
+            const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+            
+            // 重定向到Dropbox授权页面
+            window.location.href = authUrl;
+        }
+        
+        // 处理授权回调
+        function handleRedirect() {
+            // 如果URL中有access_token，说明用户已授权
+            const hash = window.location.hash.substring(1);
+            const params = new URLSearchParams(hash);
+            
+            const accessToken = params.get('access_token');
+            const state = params.get('state');
+            
+            if (accessToken && validateState(state)) {
+                // 存储访问令牌
+                localStorage.setItem('dropbox_access_token', accessToken);
+                // 清除state
+                localStorage.removeItem('dropbox_auth_state');
+                
+                // 显示加载动画
+                document.getElementById('loading').style.display = 'block';
+                
+                // 获取文件列表
+                fetchFiles(accessToken);
+                
+                // 更新UI
+                document.getElementById('authButton').textContent = '已连接到Dropbox';
+                document.getElementById('authButton').disabled = true;
+            }
+        }
+        
+        // 获取Dropbox文件列表
+        async function fetchFiles(accessToken) {
+            try {
+                const response = await fetch('https://api.dropboxapi.com/2/files/list_folder', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        path: '',
+                        recursive: false
+                    })
+                });
+                
+                const data = await response.json();
+                displayFiles(data.entries);
+            } catch (error) {
+                console.error('获取文件列表失败:', error);
+                document.getElementById('fileList').innerHTML = '<p>获取文件列表失败，请重试。</p>';
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        // 显示文件列表
+        function displayFiles(files) {
+            const fileListElement = document.getElementById('fileList');
+            fileListElement.innerHTML = '<h2>您的文件:</h2>';
+            
+            if (files && files.length > 0) {
+                files.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    fileItem.textContent = `${file.name} (${file['.tag']})`;
+                    fileListElement.appendChild(fileItem);
+                });
+            } else {
+                fileListElement.innerHTML += '<p>没有找到文件。</p>';
+            }
+        }
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            const authButton = document.getElementById('authButton');
+            authButton.addEventListener('click', startOAuth);
+            
+            // 检查是否有保存的访问令牌
+            const accessToken = localStorage.getItem('dropbox_access_token');
+            if (accessToken) {
+                // 显示加载动画
+                document.getElementById('loading').style.display = 'block';
+                
+                // 获取文件列表
+                fetchFiles(accessToken);
+                
+                // 更新UI
+                authButton.textContent = '已连接到Dropbox';
+                authButton.disabled = true;
+            }
+            
+            // 检查URL是否包含access_token (授权回调)
+            if (window.location.hash && window.location.hash.includes('access_token')) {
+                handleRedirect();
+            }
+        });
+    </script>
+</body>
+</html>
