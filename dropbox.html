@@ -236,14 +236,14 @@
             return Math.random().toString(36).substring(2, 15);
         }
         
-        // 存储state参数
+        // 存储state参数（仅用于验证过程，不存储token）
         function saveState(state) {
-            localStorage.setItem('dropbox_auth_state', state);
+            sessionStorage.setItem('dropbox_auth_state', state);
         }
         
         // 验证state参数
         function validateState(state) {
-            const savedState = localStorage.getItem('dropbox_auth_state');
+            const savedState = sessionStorage.getItem('dropbox_auth_state');
             return state === savedState;
         }
         
@@ -269,10 +269,8 @@
             const state = params.get('state');
             
             if (accessToken && validateState(state)) {
-                // 存储访问令牌
-                localStorage.setItem('dropbox_access_token', accessToken);
                 // 清除state
-                localStorage.removeItem('dropbox_auth_state');
+                sessionStorage.removeItem('dropbox_auth_state');
                 
                 // 显示加载动画
                 document.getElementById('loading').style.display = 'block';
@@ -593,33 +591,13 @@
             // 返回按钮点击事件
             document.getElementById('backButton').addEventListener('click', goBack);
             
-            // 检查是否有保存的访问令牌
-            const accessToken = localStorage.getItem('dropbox_access_token');
-            if (accessToken) {
-                // 测试令牌是否有效
-                const isValid = await testAccessToken(accessToken);
-                
-                if (isValid) {
-                    // 显示加载动画
-                    document.getElementById('loading').style.display = 'block';
-                    
-                    // 获取文件列表
-                    fetchFiles(accessToken, '');
-                    
-                    // 更新UI
-                    authButton.textContent = '已连接到Dropbox';
-                    authButton.disabled = true;
-                    document.getElementById('fileContainer').style.display = 'block';
-                } else {
-                    // 令牌无效，清除存储并重置UI
-                    localStorage.removeItem('dropbox_access_token');
-                    showError('您的Dropbox授权已过期，请重新连接');
-                }
-            }
-            
             // 检查URL是否包含access_token (授权回调)
             if (window.location.hash && window.location.hash.includes('access_token')) {
                 handleRedirect();
+            } else {
+                // 如果没有access_token，显示连接按钮
+                authButton.textContent = '连接到Dropbox';
+                authButton.disabled = false;
             }
         });
     </script>
