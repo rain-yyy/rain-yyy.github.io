@@ -42,7 +42,7 @@
     const API_KEY = 'AIzaSyDwbPqysPzSpLfq5Nu4w6yCDcA2pM0bv-8';
     
     // 请求的权限范围
-    const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+    const SCOPES = 'https://www.googleapis.com/auth/drive';
     
     let tokenClient;
     let gapiInited = false;
@@ -117,17 +117,20 @@
       try {
         console.log("Attempting to list files...");
         const response = await gapi.client.drive.files.list({
-          'pageSize': 10,
-          'fields': 'files(id, name)'
+          'pageSize': 50,
+          'fields': 'files(id, name, mimeType, modifiedTime, owners)',
+          'orderBy': 'modifiedTime desc'
         });
         
         console.log("Files response:", response);
         
         const files = response.result.files;
         if (files && files.length > 0) {
-          let fileList = '找到的文件：<ul>';
+          let fileList = '找到的文件 (' + files.length + ')：<ul>';
           for (let i = 0; i < files.length; i++) {
-            fileList += `<li>${files[i].name}</li>`;
+            const file = files[i];
+            const dateStr = new Date(file.modifiedTime).toLocaleString();
+            fileList += `<li>${file.name} (${file.mimeType}) - 最后修改: ${dateStr}</li>`;
           }
           fileList += '</ul>';
           document.getElementById('status').innerHTML += fileList;
