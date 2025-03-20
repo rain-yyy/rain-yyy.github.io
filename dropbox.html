@@ -61,6 +61,10 @@
             animation: spin 1s linear infinite;
             margin: 0 auto;
         }
+        .error {
+            color: #e74c3c;
+            margin-top: 15px;
+        }
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -78,6 +82,7 @@
             <p>正在加载文件...</p>
         </div>
         
+        <div id="error" class="error"></div>
         <div id="fileList"></div>
     </div>
 
@@ -142,6 +147,13 @@
             }
         }
         
+        // 显示错误信息
+        function showError(message) {
+            const errorElement = document.getElementById('error');
+            errorElement.textContent = message;
+            document.getElementById('loading').style.display = 'none';
+        }
+        
         // 获取Dropbox文件列表
         async function fetchFiles(accessToken) {
             try {
@@ -157,11 +169,48 @@
                     })
                 });
                 
-                const data = await response.json();
+                // 检查响应状态
+                if (!response.ok) {
+                    console.error('API响应错误:', response.status, response.statusText);
+                    // 尝试读取错误响应
+                    let errorText = '';
+                    try {
+                        const errorData = await response.text();
+                        errorText = errorData;
+                        console.error('错误详情:', errorData);
+                    } catch (e) {
+                        errorText = '无法获取详细错误信息';
+                    }
+                    
+                    throw new Error(`API请求失败: ${response.status} ${response.statusText}. ${errorText}`);
+                }
+                
+                // 检查响应的内容类型
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error('响应不是JSON格式:', contentType);
+                    throw new Error('收到了非JSON格式的响应');
+                }
+                
+                // 解析JSON之前，先获取原始文本
+                const rawText = await response.text();
+                if (!rawText || rawText.trim() === '') {
+                    console.error('收到了空响应');
+                    throw new Error('服务器返回了空响应');
+                }
+                
+                // 解析JSON
+                const data = JSON.parse(rawText);
+                
+                if (!data.entries) {
+                    console.error('响应中缺少entries字段:', data);
+                    throw new Error('无效的API响应格式');
+                }
+                
                 displayFiles(data.entries);
             } catch (error) {
                 console.error('获取文件列表失败:', error);
-                document.getElementById('fileList').innerHTML = '<p>获取文件列表失败，请重试。</p>';
+                showError(`获取文件列表失败: ${error.message}`);
             } finally {
                 document.getElementById('loading').style.display = 'none';
             }
@@ -184,23 +233,57 @@
             }
         }
         
+        // 测试令牌有效性
+        async function testAccessToken(accessToken) {
+            try {
+                const response = await fetch('https://api.dropboxapi.com/2/users/get_current_account', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(null)
+                });
+                
+                if (!response.ok) {
+                    // 令牌无效或过期
+                    console.error('令牌验证失败:', response.status);
+                    return false;
+                }
+                
+                return true;
+            } catch (error) {
+                console.error('测试令牌出错:', error);
+                return false;
+            }
+        }
+        
         // 初始化
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const authButton = document.getElementById('authButton');
             authButton.addEventListener('click', startOAuth);
             
             // 检查是否有保存的访问令牌
             const accessToken = localStorage.getItem('dropbox_access_token');
             if (accessToken) {
-                // 显示加载动画
-                document.getElementById('loading').style.display = 'block';
+                // 测试令牌是否有效
+                const isValid = await testAccessToken(accessToken);
                 
-                // 获取文件列表
-                fetchFiles(accessToken);
-                
-                // 更新UI
-                authButton.textContent = '已连接到Dropbox';
-                authButton.disabled = true;
+                if (isValid) {
+                    // 显示加载动画
+                    document.getElementById('loading').style.display = 'block';
+                    
+                    // 获取文件列表
+                    fetchFiles(accessToken);
+                    
+                    // 更新UI
+                    authButton.textContent = '已连接到Dropbox';
+                    authButton.disabled = true;
+                } else {
+                    // 令牌无效，清除存储并重置UI
+                    localStorage.removeItem('dropbox_access_token');
+                    showError('您的Dropbox授权已过期，请重新连接');
+                }
             }
             
             // 检查URL是否包含access_token (授权回调)
