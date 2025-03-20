@@ -4,6 +4,8 @@
   <title>Google Drive 集成</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin-allow-popups">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -67,6 +69,8 @@
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: '', // 将在运行时定义
+        ux_mode: 'popup', // 使用弹出窗口模式
+        prompt: 'consent'
       });
       gisInited = true;
     }
