@@ -1,1 +1,1 @@
-# rain-yyy..github.io
+# rain-yyy.github.io
