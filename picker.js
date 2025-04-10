@@ -1,8 +1,8 @@
 // Google Drive Picker 相关配置与功能
 // 客户端ID和API密钥
-const CLIENT_ID = '113700128598-1fva8o232539udn6b2guoh08o1837pdj.apps.googleusercontent.com';
-const API_KEY = 'AIzaSyDwbPqysPzSpLfq5Nu4w6yCDcA2pM0bv-8';
-const APP_ID = '113700128598';
+const CLIENT_ID = '367536793395-748vbnjhu1dq5hpr5aaoel39egbm84cj.apps.googleusercontent.com';
+const API_KEY = 'AIzaSyC6mybfqLzRGJE6Fkiq4RCVbKuJh4X_Tgg';
+const APP_ID = '367536793395';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 // 全局变量
@@ -132,23 +132,27 @@ function createPicker() {
   showDriveStatus('正在打开文件选择器...');
   
   try {
-    // 特别创建一个只显示文件夹的视图
-    const folderView = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
-      .setSelectFolderEnabled(true)
-      .setIncludeFolders(true)
-      .setMode(google.picker.DocsViewMode.LIST);
-    
-    // 创建Picker
+    // 使用 DocsView 允许用户看到文件和文件夹，并导航
+    const docsView = new google.picker.DocsView() // 默认为 ViewId.DOCS
+      .setIncludeFolders(true) // 显示文件夹以便导航
+      // .setSelectFolderEnabled(false) // 不需要显式选择文件夹本身
+      .setMimeTypes("application/pdf,text/plain,text/csv,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document") // 可选：限制可选的文件类型
+      .setMode(google.picker.DocsViewMode.LIST); // 或 GRID
+
+    // 更新 Picker 标题，指导用户操作
     const picker = new google.picker.PickerBuilder()
-      .setTitle('选择要授权的文件或文件夹')
+      .setTitle('请进入文件夹并选择要授权的文件') // <--- 修改标题
       .setOAuthToken(accessToken)
       .setDeveloperKey(API_KEY)
       .setAppId(APP_ID)
-      .addView(folderView)
+      // .addView(folderView) // <--- 移除旧的 folderView
+      .addView(docsView)   // <--- 添加新的 docsView
       .setCallback(pickerCallback)
-      .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+      .enableFeature(google.picker.Feature.MULTISELECT_ENABLED) // 允许多选文件
+      // 可选：确保导航栏可见
+      .enableFeature(google.picker.Feature.NAV_HIDDEN, false)
       .build();
-      
+
     picker.setVisible(true);
   } catch (error) {
     console.error("Error creating Picker:", error);
@@ -160,99 +164,141 @@ function createPicker() {
 async function pickerCallback(data) {
   if (data.action === google.picker.Action.PICKED) {
     const documents = data[google.picker.Response.DOCUMENTS];
-    
+
     if (!documents || documents.length === 0) {
-      showDriveStatus('未选择任何文件或文件夹');
+      showDriveStatus('未选择任何文件');
       return;
     }
-    
-    selectedFiles = documents;
-    showDriveSuccess(`已选择 ${documents.length} 个项目，正在处理...`);
-    
-    // 处理选中的文件/文件夹
-    const selectedItems = document.createElement('div');
-    selectedItems.className = 'drive-file-list';
-    
-    let text = '';
-    let fileDetails = [];
-    
-    for (const doc of documents) {
-      const docId = doc[google.picker.Document.ID];
-      const docName = doc[google.picker.Document.NAME];
-      const mimeType = doc[google.picker.Document.MIME_TYPE];
-      
-      fileDetails.push({
-        id: docId,
-        name: docName,
-        mimeType: mimeType
-      });
-      
-      const isFolder = mimeType === 'application/vnd.google-apps.folder';
-      const icon = isFolder ? '📁' : '📄';
-      
-      // 获取更多文件详情
-      try {
-        const response = await gapi.client.drive.files.get({
-          'fileId': docId,
-          'fields': 'id,name,mimeType,webViewLink'
-        });
-        
-        const item = document.createElement('div');
-        item.className = 'drive-file-item';
-        
-        item.innerHTML = `
-          <div class="drive-file-icon">${icon}</div>
-          <div class="drive-file-info">
-            <div class="drive-file-name">${response.result.name}</div>
-            <div class="drive-file-meta">
-              ${isFolder ? '文件夹' : '文件'} - 仅授权访问此项目
-            </div>
-          </div>
-        `;
-        
-        selectedItems.appendChild(item);
-        
-        text += `\n${isFolder ? '文件夹' : '文件'}: ${response.result.name}\n`;
-        text += `ID: ${response.result.id}\n`;
-        text += `链接: ${response.result.webViewLink}\n`;
-        
-        // 添加系统消息，确保addSystemMessage函数存在
-        if (typeof addSystemMessage === 'function') {
-          addSystemMessage(`已授权访问: ${response.result.name}（仅限此项目）`);
-        }
-      } catch (err) {
-        console.error(`获取文件详情出错:`, err);
-        showDriveError(`获取文件 "${docName}" 详情时出错: ${err.message || "未知错误"}`);
-      }
+
+    // 提取所有选定文件的 ID 和名称
+    const selectedFiles = documents.map(doc => ({
+        id: doc[google.picker.Document.ID],
+        name: doc[google.picker.Document.NAME]
+    }));
+    const fileIds = selectedFiles.map(f => f.id);
+    const fileNames = selectedFiles.map(f => f.name).join(', '); // 用于显示
+
+    // 确保我们有 access token
+    if (!accessToken) {
+        showDriveError('授权凭证丢失，请重新点击 "连接 Google Drive" 按钮。');
+        return;
     }
-    
-    const statusDiv = document.getElementById('google-drive-status');
-    statusDiv.innerHTML = `
-      <div class="drive-status success">
-        <i>📁</i>
-        <span>已选择 ${documents.length} 个项目，仅授权访问这些特定内容</span>
-      </div>
-      <div style="margin-top: 8px; font-size: 12px; color: var(--muted-foreground);">
-        注意：我们只能访问您选择的这些特定文件/文件夹，无法访问您 Google Drive 中的其他内容
-      </div>
-    `;
-    
-    statusDiv.appendChild(selectedItems);
-    
-    // 处理选中的文件/文件夹
-    processSelectedItems(documents);
+
+    // 获取 User ID
+    const userId = getCurrentUserId();
+    if (!userId) {
+        showDriveError('无法获取用户ID，请确保您已登录。');
+        return;
+    }
+
+    showDriveStatus(`已选择 ${selectedFiles.length} 个文件，正在发送到服务器处理...`);
+
+    // 调用后端 API
+    try {
+        const response = await fetch('https://rag-files-upload-367536793395.us-central1.run.app/api/process-google-drive-files', { // 确认你的后端 API 地址
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                user_id: userId,
+                file_ids: fileIds,     // <--- 发送 file_ids 列表
+                access_token: accessToken
+            })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            // 处理成功或部分成功的响应
+            if (result.status === 'success') {
+                showDriveSuccess(`成功处理 ${result.files_processed?.length || 0} 个文件。 ${result.message || ''}`);
+                displayProcessedFiles(result.files_processed, result.files_failed_processing);
+                if (typeof addSystemMessage === 'function') {
+                    addSystemMessage(`已成功处理 ${result.files_processed?.length || 0} 个 Google Drive 文件。`);
+                }
+            } else if (result.status === 'warning') {
+                 showDriveStatus(`文件夹处理完成，但有警告: ${result.message}`);
+                 displayProcessedFiles(result.files_processed, result.files_failed_processing);
+            } else if (result.status === 'partial_success' || result.status === 'partial_failure') {
+                 showDriveError(`部分文件处理失败: ${result.error || result.message || '部分文件导入失败'}`);
+                 displayProcessedFiles(result.files_processed, result.files_failed_processing);
+            } else {
+                // 其他成功状态码但非预期 status
+                showDriveError(`处理文件时发生未知问题: ${result.message || JSON.stringify(result)}`);
+            }
+        } else {
+            // 处理错误响应 (4xx, 5xx)
+            const errorMsg = result.error || `服务器错误 (状态码: ${response.status})`;
+            showDriveError(`处理文件失败: ${errorMsg}`);
+             // 添加系统消息
+            if (typeof addSystemMessage === 'function') {
+                addSystemMessage(`处理 Google Drive 文件时出错: ${errorMsg}`);
+            }
+        }
+
+    } catch (error) {
+        console.error('Error calling backend API:', error);
+        showDriveError(`调用后端 API 时发生网络错误: ${error.message}`);
+         // 添加系统消息
+        if (typeof addSystemMessage === 'function') {
+            addSystemMessage(`调用后端 API 处理 Google Drive 文件时出错: ${error.message}`);
+        }
+    }
+
   } else if (data.action === google.picker.Action.CANCEL) {
     showDriveStatus('已取消选择，未授权任何文件');
   }
 }
 
-// 处理已选择的项目（批量）
-function processSelectedItems(items) {
-  showDriveStatus('正在处理选中的项目...');
+// (可选) 辅助函数，用于显示处理的文件列表
+function displayProcessedFiles(processed, failed) {
+    const statusDiv = document.getElementById('google-drive-status');
+    if (!statusDiv) return;
 
-  console.log(documents);
-  
+    const fileListDiv = document.createElement('div');
+    fileListDiv.className = 'drive-file-list';
+    fileListDiv.style.marginTop = '10px';
+    fileListDiv.style.fontSize = '12px';
 
+    let content = '<h4>处理详情:</h4>';
+
+    if (processed && processed.length > 0) {
+        content += `<h5>成功处理 (${processed.length}):</h5><ul>`;
+        processed.forEach(f => {
+            content += `<li>📄 ${f.name} (-> ${f.gcs_path ? 'GCS' : '未知'})</li>`;
+        });
+        content += '</ul>';
+    } else {
+        content += '<div>无文件成功处理。</div>';
+    }
+
+    if (failed && failed.length > 0) {
+        content += `<h5 style="color: red; margin-top: 8px;">处理失败 (${failed.length}):</h5><ul>`;
+        failed.forEach(f => {
+            content += `<li>📄 ${f.name} (原因: ${f.reason || '未知'})</li>`;
+        });
+        content += '</ul>';
+    }
+
+    fileListDiv.innerHTML = content;
+    // 将列表添加到状态区域，避免覆盖之前的消息
+    const existingStatus = statusDiv.querySelector('.drive-status, .error-message');
+    if (existingStatus) {
+        existingStatus.insertAdjacentElement('afterend', fileListDiv);
+    } else {
+       statusDiv.appendChild(fileListDiv);
+    }
+}
+
+// --- 确保你有获取 User ID 的方法 ---
+function getCurrentUserId() {
+    // 这里需要替换成你实际获取用户 ID 的逻辑
+    // 例如： return window.currentUser.id;
+    // 或者从某个 HTML 元素读取： return document.getElementById('user-id-element').value;
+    // 暂时返回一个硬编码的值用于测试，但生产环境必须修改
+    console.warn("Using hardcoded user_id 'test-user-123' for testing. Replace with actual user ID logic.");
+    return 'testid';
 }
 
 // 状态显示函数
