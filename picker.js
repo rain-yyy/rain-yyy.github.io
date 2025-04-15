@@ -195,14 +195,14 @@ async function pickerCallback(data) {
 
     // 调用后端 API
     try {
-        const response = await fetch('https://rag-files-upload-367536793395.us-central1.run.app/api/process-google-drive-files', { // 确认你的后端 API 地址
+        const response = await fetch('https://rag-files-upload-367536793395.us-central1.run.app/api/process-google-drive-files', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
                 user_id: userId,
-                file_ids: fileIds,     // <--- 发送 file_ids 列表
+                file_ids: fileIds,
                 access_token: accessToken
             })
         });
@@ -210,44 +210,45 @@ async function pickerCallback(data) {
         const result = await response.json();
 
         if (response.ok) {
-            // 处理成功或部分成功的响应
             if (result.status === 'success') {
                 showDriveSuccess(`成功处理 ${result.files_processed?.length || 0} 个文件。 ${result.message || ''}`);
                 displayProcessedFiles(result.files_processed, result.files_failed_processing);
                 if (typeof addSystemMessage === 'function') {
                     addSystemMessage(`已成功处理 ${result.files_processed?.length || 0} 个 Google Drive 文件。`);
                 }
+                // 刷新文件列表
+                if (typeof fetchFileList === 'function') {
+                    fetchFileList();
+                }
             } else if (result.status === 'warning') {
-                 showDriveStatus(`文件夹处理完成，但有警告: ${result.message}`);
-                 displayProcessedFiles(result.files_processed, result.files_failed_processing);
+                showDriveStatus(`文件夹处理完成，但有警告: ${result.message}`);
+                displayProcessedFiles(result.files_processed, result.files_failed_processing);
             } else if (result.status === 'partial_success' || result.status === 'partial_failure') {
-                 showDriveError(`部分文件处理失败: ${result.error || result.message || '部分文件导入失败'}`);
-                 displayProcessedFiles(result.files_processed, result.files_failed_processing);
+                showDriveError(`部分文件处理失败: ${result.error || result.message || '部分文件导入失败'}`);
+                displayProcessedFiles(result.files_processed, result.files_failed_processing);
             } else {
-                // 其他成功状态码但非预期 status
                 showDriveError(`处理文件时发生未知问题: ${result.message || JSON.stringify(result)}`);
             }
         } else {
-            // 处理错误响应 (4xx, 5xx)
             const errorMsg = result.error || `服务器错误 (状态码: ${response.status})`;
             showDriveError(`处理文件失败: ${errorMsg}`);
-             // 添加系统消息
             if (typeof addSystemMessage === 'function') {
                 addSystemMessage(`处理 Google Drive 文件时出错: ${errorMsg}`);
             }
         }
-
     } catch (error) {
         console.error('Error calling backend API:', error);
         showDriveError(`调用后端 API 时发生网络错误: ${error.message}`);
-         // 添加系统消息
         if (typeof addSystemMessage === 'function') {
             addSystemMessage(`调用后端 API 处理 Google Drive 文件时出错: ${error.message}`);
         }
     }
-
   } else if (data.action === google.picker.Action.CANCEL) {
     showDriveStatus('已取消选择，未授权任何文件');
+  } else if (data.action === google.picker.Action.LOADED) {
+    // 忽略加载完成事件
+  } else {
+    console.warn('Unknown picker action:', data.action);
   }
 }
 
@@ -292,26 +293,31 @@ function displayProcessedFiles(processed, failed) {
 }
 
 const getUserId = () => {
-  // 尝试多种方法获取用户ID，以确保兼容性
+  // 如果在测试模式下，返回测试ID
+  if (window.testmode) {
+    return window.testid;
+  }
   
-  // 方法1：从Shopify对象获取
+  // 直接使用全局变量中的用户ID
+  if (window.currentUserId) {
+    return window.currentUserId;
+  }
+  
+  // 如果全局变量中没有用户ID，尝试从其他来源获取
   if (window.Shopify && window.Shopify.userToken) {
     return window.Shopify.userToken;
   }
   
-  // 方法2：从全局变量获取（通过liquid模板注入）
   if (typeof window.customerId !== 'undefined' && window.customerId) {
     return window.customerId;
   }
   
-  // 方法3：从ShopifyAnalytics.meta获取
   try {
     if (ShopifyAnalytics && ShopifyAnalytics.meta && ShopifyAnalytics.meta.page && ShopifyAnalytics.meta.page.customerId) {
       return ShopifyAnalytics.meta.page.customerId;
     }
   } catch (e) {}
   
-  // 方法4：从ShopifyAnalytics.lib获取
   try {
     if (ShopifyAnalytics && ShopifyAnalytics.lib && ShopifyAnalytics.lib.user()) {
       return ShopifyAnalytics.lib.user().id();
@@ -324,12 +330,10 @@ const getUserId = () => {
     }
   } catch (e) {}
   
-  // 方法5：从__st对象获取
   if (typeof __st !== 'undefined' && __st.cid) {
     return __st.cid;
   }
   
-  // 如果都获取不到，返回null
   return null;
 }
 
