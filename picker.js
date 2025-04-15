@@ -185,7 +185,7 @@ async function pickerCallback(data) {
     }
 
     // 获取 User ID
-    const userId = getCurrentUserId();
+    const userId = getUserId();
     if (!userId) {
         showDriveError('无法获取用户ID，请确保您已登录。');
         return;
@@ -291,14 +291,46 @@ function displayProcessedFiles(processed, failed) {
     }
 }
 
-// --- 确保你有获取 User ID 的方法 ---
-function getCurrentUserId() {
-    // 这里需要替换成你实际获取用户 ID 的逻辑
-    // 例如： return window.currentUser.id;
-    // 或者从某个 HTML 元素读取： return document.getElementById('user-id-element').value;
-    // 暂时返回一个硬编码的值用于测试，但生产环境必须修改
-    console.warn("Using hardcoded user_id 'test-user-123' for testing. Replace with actual user ID logic.");
-    return 'testid';
+const getUserId = () => {
+  // 尝试多种方法获取用户ID，以确保兼容性
+  
+  // 方法1：从Shopify对象获取
+  if (window.Shopify && window.Shopify.userToken) {
+    return window.Shopify.userToken;
+  }
+  
+  // 方法2：从全局变量获取（通过liquid模板注入）
+  if (typeof window.customerId !== 'undefined' && window.customerId) {
+    return window.customerId;
+  }
+  
+  // 方法3：从ShopifyAnalytics.meta获取
+  try {
+    if (ShopifyAnalytics && ShopifyAnalytics.meta && ShopifyAnalytics.meta.page && ShopifyAnalytics.meta.page.customerId) {
+      return ShopifyAnalytics.meta.page.customerId;
+    }
+  } catch (e) {}
+  
+  // 方法4：从ShopifyAnalytics.lib获取
+  try {
+    if (ShopifyAnalytics && ShopifyAnalytics.lib && ShopifyAnalytics.lib.user()) {
+      return ShopifyAnalytics.lib.user().id();
+    }
+  } catch (e) {}
+  
+  try {
+    if (ShopifyAnalytics && ShopifyAnalytics.lib && ShopifyAnalytics.lib.user() && ShopifyAnalytics.lib.user().traits) {
+      return ShopifyAnalytics.lib.user().traits().uniqToken;
+    }
+  } catch (e) {}
+  
+  // 方法5：从__st对象获取
+  if (typeof __st !== 'undefined' && __st.cid) {
+    return __st.cid;
+  }
+  
+  // 如果都获取不到，返回null
+  return null;
 }
 
 // 状态显示函数
